@@ -1,12 +1,10 @@
 import socket
 import re
 import yaml
-import os
-import subprocess
 
 ## TO EXPORT MACHINE_ID IN BASH USE: eval export $(python detect_machine.py)
 
-def get_machine_id():
+def get_machine_id() -> str:
   user_hostname: str = socket.gethostname()
   MACHINE_ID: str = ""
 
