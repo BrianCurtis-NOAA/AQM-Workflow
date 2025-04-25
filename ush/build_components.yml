@@ -1,0 +1,18 @@
+build_components:
+  ufswm:
+    lua:
+      prefix: "ufs_"
+      suffix: ".intel"
+    cmake: >
+      -DCCPP_SUITES={validated_args.ccpp_suites}
+      -DCMAKE_C_COMPILER={env_cmake_c_compiler}
+      -DCMAKE_CXX_COMPILER={env_cmake_cxx_compiler}
+      -DCMAKE_Fortran_COMPILER={env_cmake_fort_compiler}
+      -DCMAKE_BUILD_TYPE={validated_args.build_type}
+      -DCMAKE_MODULE_PATH={env_mapl_root}/share/MAPL/cmake
+      -D32BIT=ON -DINLINE_POST=ON -DAPP=ATMAQ "
+    dir-name: "ufs-weather-model"
+  ufs-utils:
+  aqm-utils:
+  nexus:
+  upp:

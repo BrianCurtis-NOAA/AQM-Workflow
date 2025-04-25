@@ -2,7 +2,7 @@ import subprocess
 import os
 import argparse
 import detect_machine as dm
-    
+
 def parse_arguments():
     # Get some system info to use in setting up defaults for argparse
     
@@ -127,7 +127,7 @@ def do_build_ufs_utils(validated_args):
     popen_commands: str = f"""
 module use {validated_args.sorc_dir}/UFS_UTILS/modulefiles
 module load build.{validated_args.machine_id.lower()}.intel
-cmake \
+cmake --verbose\
 -DCMAKE_BUILD_TYPE={validated_args.build_type} -DBUILD_TESTING=OFF -DFRENCTOOLS=OFF \
 -DICEBLEND=OFF -DSNOW2MDL=OFF -DGCYCLE=OFF -DGRIDTOOLS=OFF -DOROG_MASK_TOOLS=OFF \
 -DSFC_CLIMO_GEN=OFF -DVCOORD_GEN=OFF -DFVCOMTOOLS=OFF -DGBLEVENTS=OFF \
@@ -148,28 +148,157 @@ cmake \
     pass
 
 def do_build_aqm_utils(validated_args):
-    print("Building AQM_UTILS")
+    print("Building AQM-UTILS")
+
+    popen_commands: str = f"""
+module use {validated_args.sorc_dir}/AQM-utils/modulefiles
+module load build_{validated_args.machine_id.lower()}.intel
+cmake --verbose \
+-DCMAKE_BUILD_TYPE={validated_args.build_type} \
+-S {validated_args.sorc_dir}/AQM-utils -B {validated_args.build_dir}/AQM-utils
+"""
+    current_env = os.environ.copy()
+    process = subprocess.Popen(popen_commands, shell=True,
+                     executable="/bin/bash", stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE, env=current_env)
+    stdout, stderr = process.communicate()
+    process.wait()
+    process2 = subprocess.Popen(["make", "-j", "8", "-C", f"{validated_args.build_dir}/AQM-utils"])
+    stdout2, stderr2 = process2.communicate()
+    process2.wait()
+
     pass
 
-def do_build_nexus(validated_args):
-    print("Building NEXUS")
-    pass
+# def do_build_nexus(validated_args):
+#     print("Building NEXUS")
 
-def do_build_upp(validated_args):
-    print("Building UPP")
-    pass
+#     popen_commands: str = f"""
+# module use {validated_args.sorc_dir}/arl_nexus/modulefiles
+# module load ufs_{validated_args.machine_id.lower()}.intel
+# cmake \
+# -DCMAKE_BUILD_TYPE={validated_args.build_type} \
+# -S {validated_args.sorc_dir}/arl_nexus -B {validated_args.build_dir}/arl_nexus
+# """
+#     current_env = os.environ.copy()
+#     process = subprocess.Popen(popen_commands, shell=True,
+#                      executable="/bin/bash", stdout=subprocess.PIPE,
+#                      stderr=subprocess.PIPE, env=current_env)
+#     stdout, stderr = process.communicate()
+#     process.wait()
+#     process2 = subprocess.Popen(["make", "-j", "8", "-C", f"{validated_args.build_dir}/arl_nexus"])
+#     stdout2, stderr2 = process2.communicate()
+#     process2.wait()
+    
+#     pass
+
+def setup_aqm_utils(validated_args, build_in):
+    print("Setting up AQM-utils")
+
+    aqm_utils_lua_prefix: str = "build_"
+    aqm_utils_lua_suffix: str = ".intel"
+    aqm_utils_dirname: str = "AQM-utils"
+    aqm_utils_cmake: str = f"-DCMAKE_BUILD_TYPE={validated_args.build_type}"
+    aqm_utils_enabled: bool = True if validated_args.build_upp else False
+
+    build_in.add_component(aqm_utils_dirname, aqm_utils_lua_prefix, aqm_utils_lua_suffix, aqm_utils_cmake, aqm_utils_enabled)
+
+def setup_nexus(validated_args, build_in):
+    print("Setting up NEXUS")
+
+    nexus_lua_prefix: str = "ufs_"
+    nexus_lua_suffix: str = ".intel"
+    nexus_dirname: str = "arl_nexus"
+    nexus_cmake: str = f"-DCMAKE_BUILD_TYPE={validated_args.build_type}"
+    nexus_enabled: bool = True if validated_args.build_upp else False
+
+    build_in.add_component(nexus_dirname, nexus_lua_prefix, nexus_lua_suffix, nexus_cmake, nexus_enabled)
+
+def setup_upp(validated_args, build_in):
+    print("Setting up UPP")
+
+    upp_lua_prefix: str = ""
+    upp_lua_suffix: str = ""
+    upp_dirname: str = "UPP"
+    upp_cmake: str = f"""-DCMAKE_BUILD_TYPE={validated_args.build_type} \
+-DBUILD_WITH_IFI=OFF -DBUILD_WITH_GTG=OFF -DBUILD_WITH_WRFIO=ON"""
+    upp_enabled: bool = True if validated_args.build_upp else False
+
+    build_in.add_component(upp_dirname, upp_lua_prefix, upp_lua_suffix, upp_cmake, upp_enabled)
+
+class Build:
+    
+    class Component:
+        def __init__(self, dirname, lua_prefix, lua_suffix, cmake, enabled):
+            self.dirname: str = dirname
+            self.lua_prefix: str = lua_prefix
+            self.lua_suffix: str = lua_suffix
+            self.cmake:str = cmake
+            self.enabled: bool = enabled
+    
+    class Process:
+        def __init__(self, comp_name, process, stdout, stderr):
+            self.comp_name: str = comp_name
+            self.process = process
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def __init__(self):
+        self.name = __name__
+        self.component_list: list[Component] = []
+        self.process_list: list[Process] = []
+    
+    def add_component(self, dirname, lua_prefix, lua_suffix, cmake, enabled):
+        newComponent = self.Component(dirname, lua_prefix, lua_suffix, cmake, enabled)
+        self.component_list.append(newComponent)
+        print(f"Added Component {dirname}")
+    
+    def add_process(self, comp_name, process, stdout, stderr):
+        newProcess = self.Process(comp_name, process, stdout, stderr)
+        self.process_list.append(newProcess)
+        print(f"Added Process {comp_name}")
+    
+    def run(self, validated_args):
+        
+        for component in self.component_list:
+            if component.enabled:
+                current_env = os.environ.copy()
+                job_command = f"""
+module use {validated_args.sorc_dir}/{component.dirname}/modulefiles
+module load {component.lua_prefix}{validated_args.machine_id.lower()}{component.lua_suffix}
+cmake {component.cmake} -S {validated_args.sorc_dir}/{component.dirname} -B {validated_args.build_dir}/{component.dirname}
+make -j 8 -C {validated_args.build_dir}/{component.dirname}
+"""
+                print(job_command)
+                process = subprocess.Popen(job_command, shell=True,
+                                            executable="/bin/bash", stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, env=current_env)
+                stdout, stderr = process.communicate()
+                print(f"STDOUT: {stdout}")
+                print(f"STDERR: {stderr}")
+                self.add_process(component.dirname, process, stdout, stderr)
+                process.wait()
+            else:
+                print(f"Component {component.dirname} Not Enabled.")
+        
+        for process in self.process_list:
+            process.wait()
+        
 
 def main():
     args = parse_arguments()
     validated_args = ArgValidaton(args)
+    thisBuild = Build()
     
     os.mkdir(validated_args.build_dir) if not os.path.isdir(validated_args.build_dir) else print("Build Dir Exists.. Not creating")
 
-    do_build_ufswm(validated_args) if validated_args.build_ufswm else print("Skipping UFSWM Build")
-    do_build_ufs_utils(validated_args) if validated_args.build_ufs_utils else print("Skipping UFS_UTILS Build")
-    do_build_aqm_utils(validated_args) if validated_args.build_aqm_utils else print("Skipping AQM_UTILS Build")
-    do_build_nexus(validated_args) if validated_args.build_nexus else print("Skipping NEXUS Build")
-    do_build_upp(validated_args) if validated_args.build_upp else print("Skipping UPP Build")
+    # do_build_ufswm(validated_args) if validated_args.build_ufswm else print("Skipping UFSWM Build")
+    # do_build_ufs_utils(validated_args) if validated_args.build_ufs_utils else print("Skipping UFS_UTILS Build")
+    # do_build_aqm_utils(validated_args) if validated_args.build_aqm_utils else print("Skipping AQM_UTILS Build")
+    setup_aqm_utils(validated_args, thisBuild)
+    setup_nexus(validated_args, thisBuild)
+    setup_upp(validated_args, thisBuild)
+    thisBuild.run(validated_args)
+    print("Made it to the end")
 
 if __name__ == "__main__":
     main()
